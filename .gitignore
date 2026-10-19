@@ -1,0 +1,12 @@
+# full dataset stays local (hundreds of MB); small samples are allowed
+data/*
+!data/.gitkeep
+!data/dev_sample.csv
+
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.pytest_cache/
+.venv/
+venv/
+.DS_Store

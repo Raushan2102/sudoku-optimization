@@ -1,0 +1,67 @@
+"""Run with:  python -m pytest -q
+
+The checker tests pass from the start. The projection and gradient tests fail until
+project_simplex and objective_and_grad are written (they are skipped while those
+functions raise NotImplementedError)."""
+import sys
+from pathlib import Path
+
+import numpy as np
+import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from src.objective import (check_gradient, constraint_violation, init_weights,  # noqa: E402
+                           objective_and_grad, project_simplex, round_grid)
+from src.sudoku import is_solved, is_valid_solution, parse_grid  # noqa: E402
+
+PUZZLE = "000009000200080105080560930020000600900000000000103079610307008390005000005612700"
+SOLUTION = "561239487239784165784561932123978654978456321456123879612397548397845216845612793"
+
+
+def _skip_if_todo(fn, *args):
+    try:
+        return fn(*args)
+    except NotImplementedError:
+        pytest.skip(f"{fn.__name__} not written yet")
+
+
+def test_checker_accepts_solution():
+    p, s = parse_grid(PUZZLE), parse_grid(SOLUTION)
+    assert is_valid_solution(s) and is_solved(s, p)
+
+
+def test_checker_rejects_swap():
+    s = parse_grid(SOLUTION)
+    s[0, 0], s[0, 1] = s[0, 1], s[0, 0]
+    assert not is_valid_solution(s)
+
+
+def test_one_hot_solution_has_zero_violation():
+    s = parse_grid(SOLUTION)
+    x = np.zeros((9, 9, 9))
+    for r in range(9):
+        for c in range(9):
+            x[r, c, s[r, c] - 1] = 1
+    assert constraint_violation(x) == 0
+    assert (round_grid(x) == s).all()
+
+
+def test_projection_lands_on_simplex():
+    v = np.random.default_rng(0).normal(size=(9, 9, 9))
+    w = _skip_if_todo(project_simplex, v)
+    assert w.shape == v.shape
+    assert (w >= -1e-12).all()
+    assert np.allclose(w.sum(axis=-1), 1)
+
+
+def test_projection_keeps_points_already_on_simplex():
+    x, _ = init_weights(parse_grid(PUZZLE))
+    w = _skip_if_todo(project_simplex, x)
+    assert np.allclose(w, x)
+
+
+def test_gradient_matches_finite_differences():
+    x, _ = init_weights(parse_grid(PUZZLE), noise=0.1, seed=1)
+    _skip_if_todo(objective_and_grad, x, 0.3)
+    err = check_gradient(lambda z: objective_and_grad(z, 0.3), x)
+    assert err < 1e-5
