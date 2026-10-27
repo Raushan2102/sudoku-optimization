@@ -49,5 +49,5 @@ results/             tables and figures for the report
 
 ## Team
 
-- [Name 1]
-- [Name 2]
+- Raushan2102
+- Gracy Patel
