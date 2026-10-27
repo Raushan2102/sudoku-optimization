@@ -19,6 +19,8 @@ We solve Sudoku with constrained first-order methods instead of combinatorial se
 
 Kaggle dataset **"3 million Sudoku puzzles with ratings"** (CC0). Each row has a puzzle, its solution, the number of clues and a difficulty rating from 0 to 8.5.
 
+
+
 The full file is not in this repository. Download it from Kaggle into `data/`, then make a small stratified sample:
 
 ```bash
