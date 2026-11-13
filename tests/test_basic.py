@@ -65,3 +65,41 @@ def test_gradient_matches_finite_differences():
     _skip_if_todo(objective_and_grad, x, 0.3)
     err = check_gradient(lambda z: objective_and_grad(z, 0.3), x)
     assert err < 1e-5
+
+
+# ---------- Douglas-Rachford helpers ----------
+from src.methods import (douglas_rachford, from_groups, project_onehot,  # noqa: E402
+                         to_groups)
+
+
+@pytest.mark.parametrize("N", [4, 9, 16])
+def test_groups_roundtrip(N):
+    x = np.random.default_rng(0).random((N, N, N))
+    for kind in ["cell", "row", "col", "box"]:
+        assert np.allclose(from_groups(to_groups(x, kind), kind, N), x)
+
+
+def test_box_group_is_a_box():
+    x = np.zeros((9, 9, 9))
+    x[0:3, 3:6, 4] = 1                      # top-middle box, digit 5
+    G = to_groups(x, "box")
+    assert (G.sum(axis=1) == 9).sum() == 1  # exactly one group covers the whole box
+    assert G.sum() == 9
+
+
+def test_onehot_projection_one_per_group():
+    x = np.random.default_rng(1).random((9, 9, 9))
+    p = parse_grid(PUZZLE)
+    for kind in ["cell", "row", "col", "box"]:
+        y = project_onehot(x, kind, p)
+        assert (to_groups(y, kind).sum(axis=1) == 1).all()
+    y = project_onehot(x, "cell", p)
+    mask = p > 0
+    assert ((y.argmax(axis=2) + 1)[mask] == p[mask]).all()
+
+
+def test_douglas_rachford_solves_example():
+    p = parse_grid(PUZZLE)
+    res = douglas_rachford(p, max_iter=3000)
+    assert res.solved
+    assert (res.grid == parse_grid(SOLUTION)).all()
