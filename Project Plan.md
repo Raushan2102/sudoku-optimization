@@ -9,7 +9,8 @@
 | Fri Nov 13 | Phase 1 done: core math + N×N generalization merged, all tests pass |
 | Tue Nov 17 | Phase 2 done: all four methods merged |
 | Thu Nov 19 | Phase 3 done: benchmark + scaling runs finished, figures ready |
-| Sat Nov 21 | Slides done and rehearsed (presentation slots: Nov 23, Nov 30, Dec 2 — confirm ours) |
+| **Fri Nov 20, 11:59 PM** | **Slides submitted on Brightspace** (same deadline for every team) |
+| Mon Nov 30, 3:28–3:48 PM | Our presentation (20-minute slot) |
 | Fri Dec 4 | Final report submitted |
 
 If we fall behind, cut in this order: 25×25 runs (mention as future work) → APG variants (keep one, no restart comparison) → size of the full sample. Keep Douglas–Rachford and 16×16: the professor asked for both.
@@ -85,10 +86,10 @@ Suggested owner: Track 1.
 Same analysis for Frank–Wolfe and Douglas–Rachford.
 Suggested owner: Track 2.
 
-## Phase 4 — Slides and presentation (by Nov 21)
+## Phase 4 — Slides and presentation (slides due Nov 20, talk Nov 30)
 
 ### Issue: Slides
-Problem and relaxation (1–2 slides), the four methods (1 slide each or one comparison slide), main result (solved rate vs. difficulty), scaling result, what fails and why, conclusion. Upload to Brightspace before our slot.
+Problem and relaxation (1–2 slides), the four methods (1 slide each or one comparison slide), main result (solved rate vs. difficulty), scaling result, what fails and why, conclusion. Upload to Brightspace by Fri Nov 20, 11:59 PM.
 Owner: both.
 
 ### Issue: Rehearsal
@@ -113,7 +114,7 @@ Flip the methods table (`to do` → `done`) and fill in any remaining placeholde
 ## Open questions for discussion
 
 - Who takes Track 1 vs. Track 2? Either can do either. Raushan already did the dataset work, so Track 2 (DR, FW, N×N generalization and generator) may fit naturally; Track 1 is the core math plus PG/APG.
-- Which presentation slot do we have? If it is Nov 30 or Dec 2, Phase 4 can move later.
+- Presentation slot: Mon Nov 30, 3:28–3:48 PM. Slides are still due on Brightspace by Fri Nov 20, so Phases 2–4 cannot slip; Nov 21–29 can go to rehearsal and to the report.
 - Any changes to phase boundaries or task granularity before we convert this into GitHub Issues?
 
 ---
