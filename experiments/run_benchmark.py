@@ -2,9 +2,14 @@
 
     python experiments/run_benchmark.py --sample data/dev_sample.csv --methods pg fw --out results/dev_run.csv
 
+Add --history-out results/dev_hist.jsonl to also save each run's constraint violation per
+iteration (used by experiments/plots.py for convergence curves). Works for any grid size;
+the output has an N column.
+
 Methods that are not written yet (NotImplementedError) are skipped with a message.
 """
 import argparse
+import json
 import sys
 import time
 from pathlib import Path
@@ -20,19 +25,29 @@ p.add_argument("--sample", default="data/dev_sample.csv")
 p.add_argument("--methods", nargs="+", default=list(METHODS))
 p.add_argument("--max-iter", type=int, default=None, help="override each method's default")
 p.add_argument("--out", default="results/run.csv")
+p.add_argument("--history-out", default=None, help="optional .jsonl file for per-iteration histories")
 a = p.parse_args()
 
 df = pd.read_csv(a.sample, dtype={"puzzle": str, "solution": str})
 rows = []
+hist_file = None
+if a.history_out:
+    Path(a.history_out).parent.mkdir(parents=True, exist_ok=True)
+    hist_file = open(a.history_out, "w")
 for name in a.methods:
     method = METHODS[name]
     kwargs = {} if a.max_iter is None else {"max_iter": a.max_iter}
     try:
         for _, r in df.iterrows():
+            puzzle = parse_grid(r["puzzle"])
             t0 = time.perf_counter()
-            res = method(parse_grid(r["puzzle"]), **kwargs)
+            res = method(puzzle, **kwargs)
+            if hist_file:
+                hist_file.write(json.dumps({"method": name, "id": str(r.get("id")),
+                                            "N": int(puzzle.shape[0]), "band": r.get("band"),
+                                            "history": [float(v) for v in res.history]}) + "\n")
             rows.append({
-                "method": name, "id": r.get("id"), "band": r.get("band"),
+                "method": name, "N": int(puzzle.shape[0]), "id": r.get("id"), "band": r.get("band"),
                 "difficulty": r["difficulty"], "solved": res.solved,
                 "iterations": res.iterations, "seconds": time.perf_counter() - t0,
                 "final_violation": res.history[-1] if res.history else None,
@@ -43,6 +58,8 @@ for name in a.methods:
     done = [x for x in rows if x["method"] == name]
     print(f"{name}: solved {sum(x['solved'] for x in done)}/{len(done)}")
 
+if hist_file:
+    hist_file.close()
 if rows:
     out = pd.DataFrame(rows)
     Path(a.out).parent.mkdir(parents=True, exist_ok=True)
