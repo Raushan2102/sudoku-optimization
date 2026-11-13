@@ -103,3 +103,11 @@ def test_douglas_rachford_solves_example():
     res = douglas_rachford(p, max_iter=3000)
     assert res.solved
     assert (res.grid == parse_grid(SOLUTION)).all()
+
+
+@pytest.mark.parametrize("n_sets,order,start", [(5, "paper", "paper"), (4, "paper", "paper"),
+                                                (4, "rules_first", "uniform")])
+def test_douglas_rachford_variants_solve_example(n_sets, order, start):
+    p = parse_grid(PUZZLE)
+    res = douglas_rachford(p, n_sets=n_sets, order=order, start=start)
+    assert res.solved and (res.grid == parse_grid(SOLUTION)).all()
