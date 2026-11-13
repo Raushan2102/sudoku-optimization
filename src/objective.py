@@ -1,6 +1,7 @@
 """The continuous relaxation of Sudoku.
 
-Variables: x has shape (9, 9, 9); x[r, c, k] is the weight of digit k+1 in cell (r, c).
+Variables: x has shape (N, N, N) for an N x N grid (N = 9, 16, 25, ...); x[r, c, k] is the weight
+of digit k+1 in cell (r, c).
 Each cell's weights x[r, c, :] lie on the probability simplex (nonnegative, sum to 1).
 
 Objective (to be written by the team):
@@ -19,11 +20,12 @@ import numpy as np
 # ---------- infrastructure (done) ----------
 
 def init_weights(puzzle: np.ndarray, noise: float = 0.0, seed: int | None = None):
-    """Uniform weights 1/9 in empty cells, one-hot weights in clue cells.
+    """Uniform weights 1/N in empty cells, one-hot weights in clue cells (any N = n*n).
     Returns (x, mask) where mask[r, c] is True for clue cells (keep them fixed).
     `noise` > 0 adds a small random perturbation (for random restarts); call
     project_simplex afterwards to make the weights valid again."""
-    x = np.full((9, 9, 9), 1.0 / 9)
+    N = puzzle.shape[0]
+    x = np.full((N, N, N), 1.0 / N)
     if noise > 0:
         x = x + noise * np.random.default_rng(seed).random(x.shape)
     mask = puzzle > 0
@@ -41,13 +43,15 @@ def fix_clues(x: np.ndarray, x_clues: np.ndarray, mask: np.ndarray) -> np.ndarra
 
 
 def round_grid(x: np.ndarray) -> np.ndarray:
-    """Each cell takes the digit with the largest weight -> 9x9 int grid."""
+    """Each cell takes the digit with the largest weight -> N x N int grid."""
     return x.argmax(axis=2) + 1
 
 
 def box_sums(x: np.ndarray) -> np.ndarray:
-    """Sum of weights over each 3x3 box, per digit -> shape (3, 3, 9)."""
-    return x.reshape(3, 3, 3, 3, 9).sum(axis=(1, 3))
+    """Sum of weights over each n x n box, per digit -> shape (n, n, N), with N = n*n."""
+    N = x.shape[0]
+    n = int(round(N ** 0.5))
+    return x.reshape(n, n, n, n, N).sum(axis=(1, 3))
 
 
 def constraint_violation(x: np.ndarray) -> float:
@@ -67,7 +71,7 @@ def check_gradient(f_and_grad, x: np.ndarray, n_checks: int = 5, eps: float = 1e
     _, g = f_and_grad(x)
     worst = 0.0
     for _ in range(n_checks):
-        idx = tuple(rng.integers(0, 9, size=3))
+        idx = tuple(rng.integers(0, x.shape[0], size=3))
         e = np.zeros_like(x); e[idx] = eps
         fd = (f_and_grad(x + e)[0] - f_and_grad(x - e)[0]) / (2 * eps)
         worst = max(worst, abs(fd - g[idx]) / max(1.0, abs(fd), abs(g[idx])))
