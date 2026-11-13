@@ -51,5 +51,5 @@ results/             tables and figures for the report
 
 ## Team
 
-- Raushan2102
+- Raushan Kossayeva
 - Gracy Patel
