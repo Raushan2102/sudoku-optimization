@@ -2,6 +2,8 @@
 data/*
 !data/.gitkeep
 !data/dev_sample.csv
+!data/dev_sample_16.csv
+!data/dev_sample_25.csv
 
 __pycache__/
 *.pyc
