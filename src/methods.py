@@ -2,7 +2,7 @@
 
     method(puzzle, max_iter=..., **params) -> Result
 
-`puzzle` is a 9x9 int array (0 = empty). Every method keeps clue cells fixed,
+`puzzle` is an N x N int array (0 = empty), N = 9, 16, 25, ... Every method keeps clue cells fixed,
 returns its final weights and a history of constraint_violation() per iteration,
 and stops early once round_grid(x) is a valid solution.
 """
@@ -15,7 +15,7 @@ import numpy as np
 
 @dataclass
 class Result:
-    x: np.ndarray                                 # final weights, shape (9, 9, 9)
+    x: np.ndarray                                 # final weights, shape (N, N, N)
     grid: np.ndarray                              # round_grid(x)
     solved: bool                                  # is_solved(grid, puzzle)
     iterations: int                               # iterations actually run
