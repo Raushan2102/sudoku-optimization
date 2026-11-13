@@ -115,3 +115,66 @@ Flip the methods table (`to do` → `done`) and fill in any remaining placeholde
 - Who takes Track 1 vs. Track 2? Either can do either. Raushan already did the dataset work, so Track 2 (DR, FW, N×N generalization and generator) may fit naturally; Track 1 is the core math plus PG/APG.
 - Which presentation slot do we have? If it is Nov 30 or Dec 2, Phase 4 can move later.
 - Any changes to phase boundaries or task granularity before we convert this into GitHub Issues?
+
+---
+
+## Status update (2026-11-12)
+
+The section below is Gracy's Nov 10 write-up of the professor's feedback, restored verbatim: it was accidentally dropped when the deadlines version of this plan (commit 9f90802) replaced the file. Answers to its open questions so far:
+
+- **Douglas–Rachford is done for any N = k²** (PR #3), and the paper's exact 5-set model is now the default (PR #4), with the 4-set masked-clue version kept as an option. Dev sample, 10,000 iterations: 5 sets 297/300, 4 sets 296/300; 4 sets needs fewer iterations (median 365 vs 507).
+- **N×N generalization:** done inside `src/methods.py` for DR; `src/sudoku.py` and `src/objective.py` still hard-code 9×9 (issue "Generalize the code from 9×9 to N×N grids" above).
+- **Puzzle source for 16×16 / 25×25:** still open. Suggestion: generator first (no dependency), and add the paper's ksudoku16/ksudoku25 sets if we can find them, so we can compare with the paper's 92% / 100%.
+- **Phase timing:** scaling runs are planned for Phase 3 (by Nov 19), see the deadlines table.
+
+## Professor feedback (2026-11-10)
+
+**Status: new, appended below — does not replace or change Phases 1-4 above.**
+
+The professor reviewed this plan and suggested two additions:
+
+1. For Douglas–Rachford, read Aragón Artacho, Borwein & Tam, *"Recent Results on Douglas–Rachford Methods for Combinatorial Optimization Problems"* (Serdica Math. J., 2013 / JOTA, 2014).
+2. Consider 16×16 and 25×25 grids (or larger) to study how the methods scale.
+
+Paper downloaded to [`references/papers/aragon-artacho-borwein-tam-2014-douglas-rachford-combinatorial.pdf`](references/papers/aragon-artacho-borwein-tam-2014-douglas-rachford-combinatorial.pdf) ([arXiv:1305.2657](https://arxiv.org/abs/1305.2657)).
+
+### What the paper actually does (relevant to our `douglas_rachford` stub)
+
+Its Sudoku formulation uses a binary one-hot tensor `B[i,j,k] ∈ {0,1}` and **5** constraint sets, each with its own copy in the Douglas–Rachford product-space construction:
+- C1: rows — each `B[i,:,k]` is a basis vector
+- C2: columns — each `B[:,j,k]` is a basis vector
+- C3: boxes — each box's `B[box,k]` is a basis vector
+- C4: clues — `B[i,j,k] = 1` fixed at the given clue positions
+- C5: cells — each `B[i,j,:]` is a basis vector (exactly one digit per cell)
+
+Update rule: `x_{n+1} = T_{D,C} x_n` with `T_{A,B} = (I + R_B R_A) / 2` and `R_A = 2P_A - I`. `P_D` averages across the 5 copies (consensus); `P_C` projects each copy independently onto its own basis-vector constraint (snap each group to one-hot). This is essentially what our existing `douglas_rachford` docstring in `src/methods.py` already sketches ("one copy per rule family, project to exact 0/1, average, reflect") — the one real difference is that the paper keeps **clues as an explicit 5th DR set**, instead of a mask applied outside the loop like our sketch implies. Both should reach the same fixed points; the masked version is simpler to implement first, and the exact 5-set version is a natural refinement to try afterward.
+
+The paper reports running exactly this on 16×16 and 25×25 puzzles ("ksudoku16"/"ksudoku25", from the KSudoku KDE game's puzzle sets): DR solved 92% of 16×16 puzzles (mean ≈5.06s) and 100% of 25×25 puzzles (mean ≈4.01s) across repeated random-restart trials. Useful as a target/sanity-check for our own scaling results once we have them.
+
+### New issue: upgrade `douglas_rachford` to the paper's exact 5-set model (optional refinement)
+Add clues as an explicit 5th projected copy instead of (or alongside) the current clue-mask approach, matching the paper precisely. Not blocking — implement the simpler masked version first per the existing Phase 1 issue; treat this as a follow-up comparison.
+
+## Phase 5 — Generalize to N×N and study scaling (new, from professor feedback)
+
+**Not started — no code changed for this yet.** Appended to, not a replacement for, Phases 1-4.
+
+### Issue: Generalize core data structures from fixed 9×9 to any N = k²
+`src/sudoku.py` and `src/objective.py` currently hardcode 9×9 grids and 3×3 boxes (e.g. `box_sums`'s `reshape(3, 3, 3, 3, 9)`, `init_weights`'s `(9, 9, 9)` shape). Generalize these to take the grid size `N` (box size `sqrt(N)`) as a parameter, so 9×9, 16×16, and 25×25 puzzles all run through the same code path. `project_simplex` and `objective_and_grad` should already be size-agnostic once written (they operate along the last axis) but should be explicitly tested at each size once they exist.
+
+### Issue: Dataset/puzzle source for 16×16 and 25×25 — new database plan
+We currently have **no 16×16 or 25×25 puzzles**: the Kaggle "3 million Sudoku puzzles" dataset (our only data source so far) is 9×9-only. Options to decide between, as a new data-sourcing track alongside the existing Kaggle 9×9 pipeline:
+- **Generate synthetically**: a generator script (backtracking solver + random clue removal), parameterized by `N`, following the same pattern as `scripts/make_sample.py` (e.g. `scripts/make_sample_nxn.py`). No external dependency, full control over difficulty bands and sample size.
+- **Source existing puzzles**: look for the paper's own "ksudoku16"/"ksudoku25" test sets (KSudoku KDE game puzzle files) or another public 16×16/25×25 dataset, so our results can be compared directly against the paper's reported 92%/100% success rates.
+- Either way, the full puzzle files (if large) stay out of git per the existing `.gitignore` convention (`data/*` except `.gitkeep` and `dev_sample.csv`); any new dev-sample files for N=16/25 should follow the same naming convention, e.g. `data/dev_sample_16.csv`, `data/dev_sample_25.csv`.
+
+Decision between the two options, and the generator/download script itself, are still open — nothing built yet.
+
+### Issue: Scaling-study experiment design
+Once the generalization above is done, extend `experiments/run_benchmark.py` to run all methods across N ∈ {9, 16, 25} (and potentially larger), reporting success rate and iterations/time-to-solve vs. N, per method. Compare our Douglas–Rachford numbers against the paper's reported 92% (16×16) / 100% (25×25) success rates as a sanity check.
+
+## Open questions for discussion (added 2026-11-10)
+
+- Should the N×N generalization (Phase 5) cover all four methods, or start with Douglas–Rachford only (the method the professor named specifically) and extend to PG/APG/FW later?
+- Synthetic puzzle generator vs. sourcing the paper's own ksudoku16/ksudoku25 test sets for the new dataset — which do we want, and who owns it?
+- Should the paper's exact 5-set Douglas–Rachford model (explicit clue projection) replace our masked-clue sketch, or do we implement the masked version first and treat the 5-set version as a stretch goal?
+- Where does Phase 5 sit relative to Phases 1-4 — done in parallel once Phase 1's core math lands, or only after Phase 3's benchmarking is complete?
