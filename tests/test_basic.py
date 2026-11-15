@@ -154,3 +154,34 @@ def test_douglas_rachford_solves_16x16():
     puz = make_puzzle(random_solution(4, rng), 0.5, rng)
     res = douglas_rachford(puz)
     assert res.solved and is_solved(res.grid, puz)
+
+
+# ---------- core math ----------
+
+def test_projection_worked_example():
+    w = project_simplex(np.array([0.5, 0.8, -0.1]))
+    assert np.allclose(w, [0.35, 0.65, 0.0])
+
+
+def test_projection_is_closest_point():
+    """Compare with brute force: the projection is closer to v than random simplex points."""
+    rng = np.random.default_rng(2)
+    v = rng.normal(size=5)
+    w = project_simplex(v)
+    others = rng.dirichlet(np.ones(5), size=2000)
+    assert np.linalg.norm(v - w) <= np.linalg.norm(v - others, axis=1).min() + 1e-12
+
+
+@pytest.mark.parametrize("n", [3, 4])
+def test_gradient_any_n(n):
+    from src.sudoku import random_solution
+    N = n * n
+    rng = np.random.default_rng(n)
+    x = project_simplex(rng.random((N, N, N)))
+    assert check_gradient(lambda z: objective_and_grad(z, 0.4), x) < 1e-5
+    sol = random_solution(n, rng)
+    onehot = np.zeros((N, N, N))
+    r, c = np.indices((N, N))
+    onehot[r, c, sol - 1] = 1
+    f, g = objective_and_grad(onehot, 0.4)
+    assert abs(f) < 1e-12                           # a solution has zero cost
