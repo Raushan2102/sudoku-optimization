@@ -4,7 +4,9 @@
 
 `puzzle` is an N x N int array (0 = empty), N = 9, 16, 25, ... Every method keeps clue cells fixed,
 returns its final weights and a history of constraint_violation() per iteration,
-and stops early once round_grid(x) is a valid solution.
+and stops early once round_grid(x) is a valid solution. An optional callback(t, x) is called
+after every iteration with the current weights (for Douglas-Rachford: the averaged candidate);
+experiments/animate.py uses it to draw the grid as it fills in.
 """
 from __future__ import annotations
 
@@ -50,7 +52,8 @@ def _done(x: np.ndarray, puzzle: np.ndarray):
 
 
 def projected_gradient(puzzle: np.ndarray, max_iter: int = 1000, lam_max: float = 0.6,
-                       sigma: float = 0.25, seed=None, noise: float = 0.0, **params) -> Result:
+                       sigma: float = 0.25, seed=None, noise: float = 0.0, callback=None,
+                       **params) -> Result:
     """Projected gradient with Armijo backtracking along the projection arc
     (course notes ch. 6 and 10):
         x(a) = P_simplex(x - a * grad f(x)),  accept a when
@@ -74,6 +77,8 @@ def projected_gradient(puzzle: np.ndarray, max_iter: int = 1000, lam_max: float 
             a *= 0.5
         step, x = a, xn
         history.append(constraint_violation(x))
+        if callback is not None:
+            callback(t, x)
         grid, ok = _done(x, puzzle)
         if ok:
             return Result(x, grid, True, t, history)
@@ -83,7 +88,7 @@ def projected_gradient(puzzle: np.ndarray, max_iter: int = 1000, lam_max: float 
 
 def accelerated_projected_gradient(puzzle: np.ndarray, max_iter: int = 1000, lam_max: float = 0.6,
                                    sigma: float = 0.25, restart: bool = True, seed=None,
-                                   noise: float = 0.0, **params) -> Result:
+                                   noise: float = 0.0, callback=None, **params) -> Result:
     """Nesterov's accelerated projected gradient (course notes ch. 8), FISTA form:
         y = x_k + ((t_k - 1) / t_{k+1}) (x_k - x_{k-1}),   x_{k+1} = projected Armijo step from y.
     restart=True resets the momentum whenever f goes up (the objective is nonconvex and
@@ -116,6 +121,8 @@ def accelerated_projected_gradient(puzzle: np.ndarray, max_iter: int = 1000, lam
             tn = 1.0                              # momentum reset
         x_prev, x, tk, f_prev = x, xn, tn, fn
         history.append(constraint_violation(x))
+        if callback is not None:
+            callback(t, x)
         grid, ok = _done(x, puzzle)
         if ok:
             return Result(x, grid, True, t, history)
@@ -125,7 +132,7 @@ def accelerated_projected_gradient(puzzle: np.ndarray, max_iter: int = 1000, lam
 
 def frank_wolfe(puzzle: np.ndarray, max_iter: int = 1000, lam_max: float = 0.6,
                 step_rule: str = "armijo", sigma: float = 0.25, seed=None,
-                noise: float = 0.0, **params) -> Result:
+                noise: float = 0.0, callback=None, **params) -> Result:
     """Frank-Wolfe / conditional gradient (course notes ch. 10). The linear subproblem
     min_s <grad f(x), s> over a product of simplices has a closed form: in every cell, all
     weight on the digit with the smallest partial derivative. Then x <- x + gamma (s - x),
@@ -158,6 +165,8 @@ def frank_wolfe(puzzle: np.ndarray, max_iter: int = 1000, lam_max: float = 0.6,
             raise ValueError("step_rule must be 'armijo' or 'classic'")
         x = x + gamma * d
         history.append(constraint_violation(x))
+        if callback is not None:
+            callback(t, x)
         grid, ok = _done(x, puzzle)
         if ok:
             return Result(x, grid, True, t, history)
@@ -261,7 +270,7 @@ def project_givens(x: np.ndarray, puzzle: np.ndarray) -> np.ndarray:
 
 def douglas_rachford(puzzle: np.ndarray, max_iter: int = 10000, seed: int = 0,
                      n_sets: int = 5, order: str = "paper", start: str = "paper",
-                     noise: float = 0.1, **params) -> Result:
+                     noise: float = 0.1, callback=None, **params) -> Result:
     """Douglas-Rachford in the product space (Aragón Artacho, Borwein & Tam 2014, Sec. 6.2).
 
     One copy of the grid per constraint set. With n_sets=5 (as in the paper) the sets are
@@ -319,6 +328,8 @@ def douglas_rachford(puzzle: np.ndarray, max_iter: int = 10000, seed: int = 0,
         else:
             raise ValueError("order must be 'paper' or 'rules_first'")
         history.append(group_violation(cand))
+        if callback is not None:
+            callback(t, cand)
         grid = cand.argmax(axis=2) + 1
         if _solved_any_n(grid, puzzle):
             return Result(cand, grid, True, t, history)
