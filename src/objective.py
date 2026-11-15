@@ -78,20 +78,50 @@ def check_gradient(f_and_grad, x: np.ndarray, n_checks: int = 5, eps: float = 1e
     return worst
 
 
-# ---------- TODO: the team writes these ----------
+# ---------- core math ----------
 
 def project_simplex(v: np.ndarray) -> np.ndarray:
-    """TODO. Euclidean projection of every vector along the LAST axis onto the
-    probability simplex {w : w >= 0, sum(w) = 1}.
+    """Euclidean projection of every vector along the LAST axis onto the probability simplex
+    {w : w >= 0, sum(w) = 1}. Works for any shape (..., N), e.g. (N, N, N) for a whole grid.
 
-    Works for any shape (..., 9), e.g. (9, 9, 9) for a whole grid.
-    Hint: the sorting-based algorithm of Duchi, Shalev-Shwartz, Singer, Chandra (ICML 2008);
-    the course notes cite the same paper for the l1-ball projection (ch. 11).
+    From the KKT conditions (course notes ch. 12) the projection has the form
+        w_i = max(v_i - theta, 0)
+    for one threshold theta per vector. Sort v in decreasing order (u), and let rho be the
+    largest k with u_k - (u_1 + ... + u_k - 1) / k > 0; then theta = (u_1 + ... + u_rho - 1) / rho.
+    Duchi, Shalev-Shwartz, Singer, Chandra (ICML 2008); O(N log N) per vector.
+
+    Example: v = (0.5, 0.8, -0.1) -> u = (0.8, 0.5, -0.1), rho = 2, theta = 0.15,
+             w = (0.35, 0.65, 0).
     """
-    raise NotImplementedError
+    v = np.asarray(v, dtype=float)
+    shape = v.shape
+    V = v.reshape(-1, shape[-1])
+    U = -np.sort(-V, axis=1)                        # decreasing
+    css = np.cumsum(U, axis=1) - 1.0                # (u_1 + ... + u_k) - 1
+    k = np.arange(1, shape[-1] + 1)
+    positive = U - css / k > 0                      # True for k = 1..rho, then False
+    rho = shape[-1] - np.argmax(positive[:, ::-1], axis=1)   # index of the last True, 1-based
+    theta = css[np.arange(V.shape[0]), rho - 1] / rho
+    return np.maximum(V - theta[:, None], 0.0).reshape(shape)
 
 
 def objective_and_grad(x: np.ndarray, lam: float):
-    """TODO. Return (f, grad) for the objective in the module docstring.
-    grad has the same shape as x. Check it with check_gradient()."""
-    raise NotImplementedError
+    """Return (f, grad) for the objective in the module docstring, for any N = n*n:
+
+        f(x) = 1/2 sum (row sums - 1)^2 + 1/2 sum (column sums - 1)^2
+             + 1/2 sum (box sums - 1)^2 + lam * sum x (1 - x)
+
+    where a row sum is sum_c x[r, c, k] for one row r and digit k (and likewise for columns
+    and boxes). Every x[r, c, k] lies in exactly one row group, one column group and one box
+    group, so
+        df/dx[r, c, k] = R[r, k] + C[c, k] + B[box(r, c), k] + lam * (1 - 2 x[r, c, k]).
+    grad has the same shape as x; check it with check_gradient()."""
+    N = x.shape[0]
+    n = int(round(N ** 0.5))
+    R = x.sum(axis=1) - 1.0                         # (N rows, N digits)
+    C = x.sum(axis=0) - 1.0                         # (N cols, N digits)
+    B = box_sums(x) - 1.0                           # (n, n, N)
+    f = 0.5 * ((R ** 2).sum() + (C ** 2).sum() + (B ** 2).sum()) + lam * (x * (1.0 - x)).sum()
+    B_full = np.repeat(np.repeat(B, n, axis=0), n, axis=1)   # (N, N, N): box value per cell
+    grad = R[:, None, :] + C[None, :, :] + B_full + lam * (1.0 - 2.0 * x)
+    return float(f), grad
