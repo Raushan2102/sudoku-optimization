@@ -185,3 +185,21 @@ def test_gradient_any_n(n):
     onehot[r, c, sol - 1] = 1
     f, g = objective_and_grad(onehot, 0.4)
     assert abs(f) < 1e-12                           # a solution has zero cost
+
+
+# ---------- gradient-based methods ----------
+from src.methods import (accelerated_projected_gradient, frank_wolfe,  # noqa: E402
+                         projected_gradient)
+
+
+@pytest.mark.parametrize("method", [projected_gradient, accelerated_projected_gradient, frank_wolfe])
+def test_gradient_methods_solve_example(method):
+    p = parse_grid(PUZZLE)
+    res = method(p)
+    assert res.solved and (res.grid == parse_grid(SOLUTION)).all()
+    assert (res.x >= -1e-12).all() and np.allclose(res.x.sum(axis=2), 1)   # stays feasible
+
+
+def test_frank_wolfe_classic_step_runs():
+    res = frank_wolfe(parse_grid(PUZZLE), max_iter=50, step_rule="classic")
+    assert len(res.history) == res.iterations
