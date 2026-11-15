@@ -28,23 +28,141 @@ def lam_schedule(t: int, max_iter: int, lam_max: float = 0.6) -> float:
     return lam_max * min(1.0, t / (0.6 * max_iter))
 
 
-def projected_gradient(puzzle: np.ndarray, max_iter: int = 600, **params) -> Result:
-    """TODO. x <- project_simplex(x - alpha * grad f(x)), alpha by Armijo backtracking
-    (course notes ch. 6 and 10). Keep clue cells fixed after every step."""
-    raise NotImplementedError
+# ---------- shared pieces of the three gradient-based methods ----------
+
+def _setup(puzzle: np.ndarray, seed=None, noise: float = 0.0):
+    """Start point (uniform weights, clue cells one-hot, optional noise for restarts),
+    the clue mask and a copy of the start used to keep clues fixed."""
+    from src.objective import init_weights, project_simplex
+    x, mask = init_weights(puzzle, noise=noise, seed=seed)
+    if noise > 0:
+        x0, _ = init_weights(puzzle)
+        x = project_simplex(x)
+        x[mask] = x0[mask]
+    return x, mask, x.copy()
 
 
-def accelerated_projected_gradient(puzzle: np.ndarray, max_iter: int = 600, **params) -> Result:
-    """TODO. Nesterov extrapolation y = x + beta * (x - x_prev) before the projected step
-    (course notes ch. 8). Try it with and without restarting when f goes up."""
-    raise NotImplementedError
+def _done(x: np.ndarray, puzzle: np.ndarray):
+    from src.objective import round_grid
+    from src.sudoku import is_solved
+    grid = round_grid(x)
+    return grid, is_solved(grid, puzzle)
 
 
-def frank_wolfe(puzzle: np.ndarray, max_iter: int = 600, **params) -> Result:
-    """TODO. Linear subproblem on each cell's simplex: put all weight on the digit with the
-    smallest partial derivative (s). Then x <- x + gamma * (s - x), gamma by Armijo or
-    2 / (t + 2) (course notes ch. 10)."""
-    raise NotImplementedError
+def projected_gradient(puzzle: np.ndarray, max_iter: int = 1000, lam_max: float = 0.6,
+                       sigma: float = 0.25, seed=None, noise: float = 0.0, **params) -> Result:
+    """Projected gradient with Armijo backtracking along the projection arc
+    (course notes ch. 6 and 10):
+        x(a) = P_simplex(x - a * grad f(x)),  accept a when
+        f(x(a)) <= f(x) + sigma * <grad f(x), x(a) - x>.
+    The step found at one iteration is the starting guess (doubled) for the next.
+    lam grows from 0 to lam_max (lam_schedule); clue cells never move."""
+    from src.objective import constraint_violation, objective_and_grad, project_simplex
+    x, mask, x0 = _setup(puzzle, seed, noise)
+    step, history = 1.0, []
+    for t in range(1, max_iter + 1):
+        lam = lam_schedule(t, max_iter, lam_max)
+        f, g = objective_and_grad(x, lam)
+        g[mask] = 0.0
+        a = 2 * step
+        while True:
+            xn = project_simplex(x - a * g)
+            xn[mask] = x0[mask]
+            fn, _ = objective_and_grad(xn, lam)
+            if fn <= f + sigma * float((g * (xn - x)).sum()) or a < 1e-10:
+                break
+            a *= 0.5
+        step, x = a, xn
+        history.append(constraint_violation(x))
+        grid, ok = _done(x, puzzle)
+        if ok:
+            return Result(x, grid, True, t, history)
+    grid, ok = _done(x, puzzle)
+    return Result(x, grid, ok, max_iter, history)
+
+
+def accelerated_projected_gradient(puzzle: np.ndarray, max_iter: int = 1000, lam_max: float = 0.6,
+                                   sigma: float = 0.25, restart: bool = True, seed=None,
+                                   noise: float = 0.0, **params) -> Result:
+    """Nesterov's accelerated projected gradient (course notes ch. 8), FISTA form:
+        y = x_k + ((t_k - 1) / t_{k+1}) (x_k - x_{k-1}),   x_{k+1} = projected Armijo step from y.
+    restart=True resets the momentum whenever f goes up (the objective is nonconvex and
+    changes with lam, so plain momentum can overshoot). If the extrapolated point is worse
+    than x_k, the step is taken from x_k instead."""
+    from src.objective import constraint_violation, objective_and_grad, project_simplex
+    x, mask, x0 = _setup(puzzle, seed, noise)
+    x_prev, tk, step, f_prev, history = x.copy(), 1.0, 1.0, np.inf, []
+    for t in range(1, max_iter + 1):
+        lam = lam_schedule(t, max_iter, lam_max)
+        tn = (1 + np.sqrt(1 + 4 * tk * tk)) / 2
+        y = project_simplex(x + ((tk - 1) / tn) * (x - x_prev))
+        y[mask] = x0[mask]
+        fy, gy = objective_and_grad(y, lam)
+        fx, gx = objective_and_grad(x, lam)
+        if fy > fx:                               # bad extrapolation: step from x instead
+            y, fy, gy = x, fx, gx
+        gy = gy.copy()
+        gy[mask] = 0.0
+        a = 2 * step
+        while True:
+            xn = project_simplex(y - a * gy)
+            xn[mask] = x0[mask]
+            fn, _ = objective_and_grad(xn, lam)
+            if fn <= fy + sigma * float((gy * (xn - y)).sum()) or a < 1e-10:
+                break
+            a *= 0.5
+        step = a
+        if restart and fn > f_prev:
+            tn = 1.0                              # momentum reset
+        x_prev, x, tk, f_prev = x, xn, tn, fn
+        history.append(constraint_violation(x))
+        grid, ok = _done(x, puzzle)
+        if ok:
+            return Result(x, grid, True, t, history)
+    grid, ok = _done(x, puzzle)
+    return Result(x, grid, ok, max_iter, history)
+
+
+def frank_wolfe(puzzle: np.ndarray, max_iter: int = 1000, lam_max: float = 0.6,
+                step_rule: str = "armijo", sigma: float = 0.25, seed=None,
+                noise: float = 0.0, **params) -> Result:
+    """Frank-Wolfe / conditional gradient (course notes ch. 10). The linear subproblem
+    min_s <grad f(x), s> over a product of simplices has a closed form: in every cell, all
+    weight on the digit with the smallest partial derivative. Then x <- x + gamma (s - x),
+        step_rule="armijo":  gamma by backtracking from 1 on f(x + gamma d) <= f + sigma gamma <g, d>
+        step_rule="classic": gamma = 2 / (t + 2).
+    No projection is needed: every iterate is a convex combination of feasible points."""
+    from src.objective import constraint_violation, objective_and_grad
+    x, mask, x0 = _setup(puzzle, seed, noise)
+    N = puzzle.shape[0]
+    r, c = np.indices((N, N))
+    history = []
+    for t in range(1, max_iter + 1):
+        lam = lam_schedule(t, max_iter, lam_max)
+        f, g = objective_and_grad(x, lam)
+        s_ = np.zeros_like(x)
+        s_[r, c, g.argmin(axis=2)] = 1.0
+        s_[mask] = x0[mask]
+        d = s_ - x
+        if step_rule == "classic":
+            gamma = 2.0 / (t + 2)
+        elif step_rule == "armijo":
+            slope = float((g * d).sum())
+            gamma = 1.0
+            while gamma > 1e-6:
+                fn, _ = objective_and_grad(x + gamma * d, lam)
+                if fn <= f + sigma * gamma * slope:
+                    break
+                gamma *= 0.5
+        else:
+            raise ValueError("step_rule must be 'armijo' or 'classic'")
+        x = x + gamma * d
+        history.append(constraint_violation(x))
+        grid, ok = _done(x, puzzle)
+        if ok:
+            return Result(x, grid, True, t, history)
+    grid, ok = _done(x, puzzle)
+    return Result(x, grid, ok, max_iter, history)
 
 
 # ---------- Douglas-Rachford (outside the course, for comparison) ----------
