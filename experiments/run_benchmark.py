@@ -6,6 +6,10 @@ Add --history-out results/dev_hist.jsonl to also save each run's constraint viol
 iteration (used by experiments/plots.py for convergence curves). Works for any grid size;
 the output has an N column.
 
+--restarts K gives every puzzle up to K starts (seed 0, 1, ...; the gradient methods add
+random noise to the start from the second one on). Iterations and seconds are summed over
+the starts that were run, and the `starts` column says how many were needed.
+
 Methods that are not written yet (NotImplementedError) are skipped with a message.
 """
 import argparse
@@ -26,6 +30,8 @@ p.add_argument("--methods", nargs="+", default=list(METHODS))
 p.add_argument("--max-iter", type=int, default=None, help="override each method's default")
 p.add_argument("--out", default="results/run.csv")
 p.add_argument("--history-out", default=None, help="optional .jsonl file for per-iteration histories")
+p.add_argument("--restarts", type=int, default=1, help="up to this many starts per puzzle")
+p.add_argument("--label", default=None, help="value for the `setting` column (default: method defaults)")
 a = p.parse_args()
 
 df = pd.read_csv(a.sample, dtype={"puzzle": str, "solution": str})
@@ -41,7 +47,15 @@ for name in a.methods:
         for _, r in df.iterrows():
             puzzle = parse_grid(r["puzzle"])
             t0 = time.perf_counter()
-            res = method(puzzle, **kwargs)
+            total_it = 0
+            for k in range(a.restarts):
+                extra = {"seed": k}
+                if name != "dr" and k > 0:
+                    extra["noise"] = 0.3
+                res = method(puzzle, **kwargs, **extra)
+                total_it += res.iterations
+                if res.solved:
+                    break
             if hist_file:
                 hist_file.write(json.dumps({"method": name, "id": str(r.get("id")),
                                             "N": int(puzzle.shape[0]), "band": r.get("band"),
@@ -49,7 +63,8 @@ for name in a.methods:
             rows.append({
                 "method": name, "N": int(puzzle.shape[0]), "id": r.get("id"), "band": r.get("band"),
                 "difficulty": r["difficulty"], "solved": res.solved,
-                "iterations": res.iterations, "seconds": time.perf_counter() - t0,
+                "iterations": total_it, "seconds": time.perf_counter() - t0, "starts": k + 1,
+                "max_iter": kwargs.get("max_iter"), "setting": a.label,
                 "final_violation": res.history[-1] if res.history else None,
             })
     except NotImplementedError:

@@ -4,6 +4,7 @@ data/*
 !data/dev_sample.csv
 !data/dev_sample_16.csv
 !data/dev_sample_25.csv
+!data/hard_9.csv
 
 __pycache__/
 *.pyc
