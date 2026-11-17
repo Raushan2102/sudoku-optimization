@@ -60,7 +60,7 @@ Which methods solve each puzzle (E1): all four 124; DR plus one or two gradient 
 5. **Frank–Wolfe is weakest from one start** (lowest solve rate, costliest iteration because of its Armijo search from step 1, heavy tail of iterations) **but gains most from restarts** (+69 puzzles, from last to best of the gradient methods). Its outcome depends strongly on the start, so new starts reach different basins: it solved 42 puzzles on its 2nd start against 15 for PG.
 6. **DR needs about twice the iterations but is the fastest overall**, because an iteration is only argmax projections and averages, with no gradient or line search.
 7. **Restarts give diminishing returns.** Most solves come on start 1; PG ran all five starts on 116 puzzles and solved 10 of them on start 5. The hardest band stays at 38–50 % for the gradient methods.
-8. **Hard puzzles:** the gradient methods solve 3 of 240 attempts. DR's AI Escargot result (100/100) is consistent with the paper's 985/1000, but its 'Nasty' result (7/100) is well below the paper's 202/1000: if our DR matched the paper, 7 or fewer out of 100 would happen with probability 0.0002. Some implementation detail differs from the paper (start distribution, stopping and rounding rule, or tie-breaking in the projection) and has not been identified yet. The iteration cap is not the cause: E3 already uses the paper's 10,000.
+8. **Hard puzzles:** the gradient methods solve 3 of 240 attempts. DR's AI Escargot result (100/100) is consistent with the paper's 985/1000, but its 'Nasty' result (7/100) is well below the paper's 202/1000: if our DR matched the paper, 7 or fewer out of 100 would happen with probability 0.0002. Every reading of the paper's text we tested gives 5–11 %; the remaining difference is most likely in the authors' unpublished C++ code (see "Why DR underperforms the paper on 'Nasty'" below).
 
 ## DR's five E1 misses with 10,000 iterations
 
@@ -76,6 +76,25 @@ One-off check (Nov 17, 2026): the five puzzles DR missed in E1, rerun from the s
 
 - With the paper's budget, DR's one-start result would be 297/300 instead of 295/300; both newly solved puzzles needed only a little more than 3000 iterations.
 - The other three are stuck rather than slow: from this start DR circles without converging even at 10,000 iterations, while a fresh start solves each in 123–327 iterations. For DR on these puzzles, restarting beats waiting.
+
+## Why DR underperforms the paper on 'Nasty'
+
+Investigation, Nov 17, 2026. All runs: paper order, start x0 = (y, …, y), 10,000 iterations, seeds 0–99 (the same starts as E3). Our run solves 7/100; the paper reports 202/1000 (20.2 %).
+
+| Suspect | Test | Result |
+| --- | --- | --- |
+| Puzzle transcribed wrongly | Compared `data/hard_9.csv` with the paper's Figure 11 | Identical: every row's clues match, and the paper's solution satisfies all 22 clues |
+| Algorithm differs from the paper | Checked sets C1–C5, the clue projection, T_{D,C} = (I + R_C R_D)/2, start, 10,000-iteration cap and stopping test against Sections 6.2–6.3 | All match the text |
+| Start distribution | Analysis, confirmed numerically | Irrelevant. Because the copies start equal, P_D x0 = y and x1 = P_C(y): y only enters the first projection, and only through which entry of each group is largest. Any i.i.d. continuous start gives the same results |
+| Tie-breaking in the one-hot projection (the paper leaves it open) | Lowest index / highest index / random among tied maxima, against `np.argmax` on raw floats | 5 / 9 / 11 / 7 solved. Ties occur in about 0.1 % of group projections |
+| Clue projection (the paper's C4 definition sets only the given entry to 1, its projection formula can be read as resetting the whole cell) | Given entry only / whole clue cell / 4-set version (clues fixed in the cell projection) | 7 / 9 / 5 solved. The whole-cell version still gives 99/100 on AI Escargot |
+| Stopping test | Analysis | Ours (per-cell argmax, then a validity check) accepts every grid the paper's pointwise rounding accepts and more, so it can only raise our success rate |
+
+Even the best variant (11/100) would occur only about 1 % of the time if the true rate were 20.2 %.
+
+What the runs show about DR on this puzzle: with a deterministic tie rule, about 77 of 100 runs revisit an earlier state exactly, typically around iteration 5,700, and then repeat with a period of about 100–124 iterations. From then on more iterations cannot help, which is why restarts beat longer runs. The paper itself reports 'Nasty' as unsolvable by another DR solver, 20 % with its own code and 24 % with the top-left clue removed, and attributes this to an abundance of near solutions; our implementation lands lower on the same hard puzzle.
+
+Not tested: single vs double precision (ties are rare, so it is unlikely to matter much) and details of the authors' C++ code. Their companion page (carmamaths.org/DRmethods/comb-opt/) offers the source only on request by email, and its puzzle files are on a host that no longer resolves. Settling the gap requires that code.
 
 ## Caveats
 
