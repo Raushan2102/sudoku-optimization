@@ -79,7 +79,7 @@ One-off check (Nov 17, 2026): the five puzzles DR missed in E1, rerun from the s
 
 ## Why DR underperforms the paper on 'Nasty'
 
-Investigation, Nov 17, 2026. All runs: paper order, start x0 = (y, …, y), 10,000 iterations, seeds 0–99 (the same starts as E3). Our run solves 7/100; the paper reports 202/1000 (20.2 %).
+Investigation, Nov 17, 2026. All runs: paper order, start x0 = (y, …, y), 10,000 iterations, seeds 0–99 (the same starts as E3). Our run solves 7/100; the paper reports 202/1000 (20.2 %). Every number below is reproduced by `experiments/nasty_dr_variants.py` (`--tie raw|first|last|random`, `--givens partial|full|four`, `--puzzle "AI Escargot"`), about 2–3 minutes per configuration.
 
 | Suspect | Test | Result |
 | --- | --- | --- |
