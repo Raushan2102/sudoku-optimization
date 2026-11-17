@@ -60,12 +60,27 @@ Which methods solve each puzzle (E1): all four 124; DR plus one or two gradient 
 5. **Frank–Wolfe is weakest from one start** (lowest solve rate, costliest iteration because of its Armijo search from step 1, heavy tail of iterations) **but gains most from restarts** (+69 puzzles, from last to best of the gradient methods). Its outcome depends strongly on the start, so new starts reach different basins: it solved 42 puzzles on its 2nd start against 15 for PG.
 6. **DR needs about twice the iterations but is the fastest overall**, because an iteration is only argmax projections and averages, with no gradient or line search.
 7. **Restarts give diminishing returns.** Most solves come on start 1; PG ran all five starts on 116 puzzles and solved 10 of them on start 5. The hardest band stays at 38–50 % for the gradient methods.
-8. **Hard puzzles:** the gradient methods solve 3 of 240 attempts. DR's AI Escargot result (100/100) is consistent with the paper's 985/1000, but its 'Nasty' result (7/100) is well below the paper's 202/1000: if our DR matched the paper, 7 or fewer out of 100 would happen with probability 0.0002. Some implementation detail differs from the paper (start distribution, stopping and rounding rule, tie-breaking in the projection, or iteration cap) and has not been identified yet.
+8. **Hard puzzles:** the gradient methods solve 3 of 240 attempts. DR's AI Escargot result (100/100) is consistent with the paper's 985/1000, but its 'Nasty' result (7/100) is well below the paper's 202/1000: if our DR matched the paper, 7 or fewer out of 100 would happen with probability 0.0002. Some implementation detail differs from the paper (start distribution, stopping and rounding rule, or tie-breaking in the projection) and has not been identified yet. The iteration cap is not the cause: E3 already uses the paper's 10,000.
+
+## DR's five E1 misses with 10,000 iterations
+
+One-off check (Nov 17, 2026): the five puzzles DR missed in E1, rerun from the same start (seed 0) with the paper's 10,000-iteration cap instead of 3000. The E2 column gives the iterations of the start that solved the puzzle (the CSV sums all starts; each failed start used 1000).
+
+| Puzzle id | Difficulty | E1 (3000) | Same start, 10,000 | E2 (restarts) |
+| --- | --- | --- | --- | --- |
+| 2511252 | 5.1 | missed | solved at 4912 | start 2, 116 iterations |
+| 2203850 | 5.6 | missed | solved at 3825 | start 4, 195 iterations |
+| 495520 | 3.1 | missed | unsolved | start 2, 247 iterations |
+| 1926592 | 4.1 | missed | unsolved | start 5, 123 iterations |
+| 762699 | 4.8 | missed | unsolved | start 4, 327 iterations |
+
+- With the paper's budget, DR's one-start result would be 297/300 instead of 295/300; both newly solved puzzles needed only a little more than 3000 iterations.
+- The other three are stuck rather than slow: from this start DR circles without converging even at 10,000 iterations, while a fresh start solves each in 123–327 iterations. For DR on these puzzles, restarting beats waiting.
 
 ## Caveats
 
 - E1 and E2 do not have the same total budget: E1 allows at most 3000 iterations, E2 up to 5 × 1000 = 5000. For PG and APG the restart gain is still from new starts (their solves finish early); for FW and DR part of it may be extra budget. At 1000 iterations, DR's first start solves 265 puzzles against 295 at 3000.
-- DR is capped at 3000 iterations in E1; the paper uses 10,000, so some of its five misses might be solved with the paper's budget.
+- DR is capped at 3000 iterations in E1; the paper uses 10,000. With 10,000, two of its five misses are solved (see above).
 - Timings depend on the machine: the Nov 17 run was 1.3–1.9× slower than Nov 15, but the ranking of methods did not change.
 - With 50 puzzles per band, a 50 % share has a 95 % interval of about ±14 points; small band-to-band differences (e.g. PG 34 % vs APG 32 %) are noise.
 - No hyperparameter tuning: results are for `lam_max = 0.6`, Armijo constant 0.25 and restart noise 0.3.
