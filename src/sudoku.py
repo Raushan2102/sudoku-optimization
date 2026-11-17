@@ -1,12 +1,8 @@
-"""Loading puzzles from the Kaggle dataset and checking solutions.
+"""Loading puzzles from the Kaggle dataset and checking solutions (9x9 only).
 
 Dataset: "3 million Sudoku puzzles with ratings" (Kaggle, CC0).
 Columns: id, puzzle, solution, clues, difficulty.
 `puzzle` is an 81-character string with '.' for empty cells.
-
-Grids of any size N = n*n (9, 16, 25, ...) are supported. A 9x9 grid can be written in the
-Kaggle format (81 characters); any grid can be written as N*N space-separated integers with
-0 for an empty cell, which is the format the N x N generator uses.
 """
 from __future__ import annotations
 
@@ -17,29 +13,20 @@ import pandas as pd
 # ---------- parsing ----------
 
 def parse_grid(s: str) -> np.ndarray:
-    """String -> N x N int array, 0 for an empty cell. Accepts the Kaggle 9x9 format
-    (81 characters, '.' or '0' for empty) or N*N space-separated integers."""
-    s = s.strip()
-    if " " in s:
-        vals = [int(v) for v in s.split()]
-    else:
-        s = s.replace(".", "0")
-        if not s.isdigit():
-            raise ValueError("expected digits and dots, or space-separated integers")
-        vals = [int(ch) for ch in s]
-    N = int(round(len(vals) ** 0.5))
-    n = int(round(N ** 0.5))
-    if N * N != len(vals) or n * n != N:
-        raise ValueError(f"{len(vals)} values do not form an N x N grid with N = n*n")
-    return np.array(vals, dtype=int).reshape(N, N)
+    """Kaggle 9x9 format (81 characters, '.' or '0' for empty) -> 9x9 int array,
+    0 for an empty cell."""
+    s = s.strip().replace(".", "0")
+    if not s.isdigit() or len(s) != 81:
+        raise ValueError("expected 81 digits and dots")
+    return np.array([int(ch) for ch in s], dtype=int).reshape(9, 9)
 
 
 def grid_to_string(grid: np.ndarray) -> str:
-    """9x9 -> Kaggle format (81 characters, '.' for empty); larger grids -> space-separated."""
+    """9x9 -> Kaggle format (81 characters, '.' for empty)."""
     g = np.asarray(grid)
-    if g.shape == (9, 9):
-        return "".join(str(int(v)) if v else "." for v in g.ravel())
-    return " ".join(str(int(v)) for v in g.ravel())
+    if g.shape != (9, 9):
+        raise ValueError("expected a 9x9 grid")
+    return "".join(str(int(v)) if v else "." for v in g.ravel())
 
 
 def load_puzzles(path: str, n: int | None = None) -> pd.DataFrame:
@@ -54,19 +41,17 @@ def load_puzzles(path: str, n: int | None = None) -> pd.DataFrame:
 # ---------- checking ----------
 
 def is_valid_solution(grid: np.ndarray) -> bool:
-    """True if every row, column and n x n box contains 1..N exactly once (N = n*n)."""
+    """True if every row, column and 3x3 box contains 1..9 exactly once."""
     g = np.asarray(grid)
-    N = g.shape[0]
-    n = int(round(N ** 0.5))
-    if g.ndim != 2 or g.shape != (N, N) or n * n != N:
+    if g.shape != (9, 9):
         return False
-    full = set(range(1, N + 1))
-    for i in range(N):
+    full = set(range(1, 10))
+    for i in range(9):
         if set(g[i]) != full or set(g[:, i]) != full:
             return False
-    for br in range(0, N, n):
-        for bc in range(0, N, n):
-            if set(g[br:br + n, bc:bc + n].ravel()) != full:
+    for br in range(0, 9, 3):
+        for bc in range(0, 9, 3):
+            if set(g[br:br + 3, bc:bc + 3].ravel()) != full:
                 return False
     return True
 
@@ -100,31 +85,3 @@ def stratified_sample(df: pd.DataFrame, per_band: int, bands=DEFAULT_BANDS,
         take = sel.sample(n=min(per_band, len(sel)), random_state=seed)
         parts.append(take.assign(band=band_label(lo, hi)))
     return pd.concat(parts, ignore_index=True)
-
-
-# ---------- N x N generator ----------
-
-def random_solution(n: int, rng: np.random.Generator) -> np.ndarray:
-    """A random solved grid of side N = n*n: a pattern grid, then shuffled digits, rows within
-    bands, bands, columns within stacks, stacks and possibly a transpose. All of these keep
-    every rule satisfied."""
-    N = n * n
-    r = np.arange(N)[:, None]
-    c = np.arange(N)[None, :]
-    base = (n * (r % n) + r // n + c) % N                  # valid pattern, values 0..N-1
-    digits = rng.permutation(N) + 1
-    rows = np.concatenate([b * n + rng.permutation(n) for b in rng.permutation(n)])
-    cols = np.concatenate([b * n + rng.permutation(n) for b in rng.permutation(n)])
-    g = digits[base][rows][:, cols]
-    return g.T.copy() if rng.random() < 0.5 else g
-
-
-def make_puzzle(solution: np.ndarray, blank_fraction: float, rng: np.random.Generator) -> np.ndarray:
-    """Blank out a random `blank_fraction` of the cells (0 = empty). The puzzle may have more
-    than one solution; is_solved() accepts any grid that keeps the clues and the rules."""
-    N = solution.shape[0]
-    puzzle = solution.copy()
-    k = int(round(blank_fraction * N * N))
-    idx = rng.choice(N * N, size=k, replace=False)
-    puzzle.ravel()[idx] = 0
-    return puzzle

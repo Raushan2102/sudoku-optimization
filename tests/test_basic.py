@@ -72,11 +72,10 @@ from src.methods import (douglas_rachford, from_groups, project_onehot,  # noqa:
                          to_groups)
 
 
-@pytest.mark.parametrize("N", [4, 9, 16])
-def test_groups_roundtrip(N):
-    x = np.random.default_rng(0).random((N, N, N))
+def test_groups_roundtrip():
+    x = np.random.default_rng(0).random((9, 9, 9))
     for kind in ["cell", "row", "col", "box"]:
-        assert np.allclose(from_groups(to_groups(x, kind), kind, N), x)
+        assert np.allclose(from_groups(to_groups(x, kind), kind), x)
 
 
 def test_box_group_is_a_box():
@@ -113,47 +112,24 @@ def test_douglas_rachford_variants_solve_example(n_sets, order, start):
     assert res.solved and (res.grid == parse_grid(SOLUTION)).all()
 
 
-# ---------- N x N support ----------
-from src.sudoku import grid_to_string, make_puzzle, random_solution  # noqa: E402
-from src.objective import box_sums  # noqa: E402
+from src.sudoku import grid_to_string  # noqa: E402
 
 
-@pytest.mark.parametrize("n", [2, 3, 4, 5])
-def test_random_solution_is_valid(n):
-    sol = random_solution(n, np.random.default_rng(n))
-    assert sol.shape == (n * n, n * n)
-    assert is_valid_solution(sol)
-
-
-@pytest.mark.parametrize("n", [3, 4, 5])
-def test_grid_string_roundtrip(n):
-    rng = np.random.default_rng(0)
-    puz = make_puzzle(random_solution(n, rng), 0.5, rng)
-    assert (parse_grid(grid_to_string(puz)) == puz).all()
-
-
-def test_kaggle_format_still_parses():
+def test_kaggle_format_roundtrip():
     assert parse_grid(PUZZLE).shape == (9, 9)
     assert grid_to_string(parse_grid(SOLUTION)) == SOLUTION
 
 
-@pytest.mark.parametrize("n", [3, 4])
-def test_one_hot_solution_box_sums_are_one(n):
-    sol = random_solution(n, np.random.default_rng(1))
-    N = n * n
-    x = np.zeros((N, N, N))
-    r, c = np.indices((N, N))
-    x[r, c, sol - 1] = 1
+def test_one_hot_solution_box_sums_are_one():
+    from src.objective import box_sums
+    s = parse_grid(SOLUTION)
+    x = np.zeros((9, 9, 9))
+    for r in range(9):
+        for c in range(9):
+            x[r, c, s[r, c] - 1] = 1
     assert np.allclose(box_sums(x), 1)
-    assert (round_grid(x) == sol).all()
+    assert (round_grid(x) == s).all()
     assert constraint_violation(x) == 0
-
-
-def test_douglas_rachford_solves_16x16():
-    rng = np.random.default_rng(3)
-    puz = make_puzzle(random_solution(4, rng), 0.5, rng)
-    res = douglas_rachford(puz)
-    assert res.solved and is_solved(res.grid, puz)
 
 
 # ---------- core math ----------
@@ -172,18 +148,13 @@ def test_projection_is_closest_point():
     assert np.linalg.norm(v - w) <= np.linalg.norm(v - others, axis=1).min() + 1e-12
 
 
-@pytest.mark.parametrize("n", [3, 4])
-def test_gradient_any_n(n):
-    from src.sudoku import random_solution
-    N = n * n
-    rng = np.random.default_rng(n)
-    x = project_simplex(rng.random((N, N, N)))
-    assert check_gradient(lambda z: objective_and_grad(z, 0.4), x) < 1e-5
-    sol = random_solution(n, rng)
-    onehot = np.zeros((N, N, N))
-    r, c = np.indices((N, N))
-    onehot[r, c, sol - 1] = 1
-    f, g = objective_and_grad(onehot, 0.4)
+def test_solution_has_zero_cost():
+    s = parse_grid(SOLUTION)
+    x = np.zeros((9, 9, 9))
+    for r in range(9):
+        for c in range(9):
+            x[r, c, s[r, c] - 1] = 1
+    f, g = objective_and_grad(x, 0.4)
     assert abs(f) < 1e-12                           # a solution has zero cost
 
 

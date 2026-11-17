@@ -1,8 +1,8 @@
-"""The four methods compared in the project. All share one signature:
+"""The four methods compared in the project (9x9 only). All share one signature:
 
     method(puzzle, max_iter=..., **params) -> Result
 
-`puzzle` is an N x N int array (0 = empty), N = 9, 16, 25, ... Every method keeps clue cells fixed,
+`puzzle` is a 9x9 int array (0 = empty). Every method keeps clue cells fixed,
 returns its final weights and a history of constraint_violation() per iteration,
 and stops early once round_grid(x) is a valid solution. An optional callback(t, x) is called
 after every iteration with the current weights (for Douglas-Rachford: the averaged candidate);
@@ -141,8 +141,7 @@ def frank_wolfe(puzzle: np.ndarray, max_iter: int = 1000, lam_max: float = 0.6,
     No projection is needed: every iterate is a convex combination of feasible points."""
     from src.objective import constraint_violation, objective_and_grad
     x, mask, x0 = _setup(puzzle, seed, noise)
-    N = puzzle.shape[0]
-    r, c = np.indices((N, N))
+    r, c = np.indices((9, 9))
     history = []
     for t in range(1, max_iter + 1):
         lam = lam_schedule(t, max_iter, lam_max)
@@ -179,42 +178,39 @@ def frank_wolfe(puzzle: np.ndarray, max_iter: int = 1000, lam_max: float = 0.6,
 # Methods for Combinatorial Optimization Problems. J. Optim. Theory Appl., 2014.
 # arXiv:1305.2657, Section 6.2 (binary Sudoku formulation).
 #
-# All helpers below work for any side length N = n * n (9, 16, 25, ...).
+# All helpers below are for the fixed 9x9, 3x3-box grid.
 
 KINDS = ("cell", "row", "col", "box")
 
 
 def to_groups(x: np.ndarray, kind: str) -> np.ndarray:
-    """(N, N, N) -> (N*N, N): every row of the result is one group of the rule `kind`.
+    """(9, 9, 9) -> (81, 9): every row of the result is one group of the rule `kind`.
     x[r, c, k] is the weight of digit k+1 in cell (r, c).
-      cell: the N digit weights of one cell
+      cell: the 9 digit weights of one cell
       row:  one digit k in one row r, over all columns
       col:  one digit k in one column c, over all rows
-      box:  one digit k in one n x n box, over its N cells"""
-    N = x.shape[0]
+      box:  one digit k in one 3x3 box, over its 9 cells"""
     if kind == "cell":
-        return x.reshape(N * N, N)
+        return x.reshape(81, 9)
     if kind == "row":                       # axes (r, k, c)
-        return x.transpose(0, 2, 1).reshape(N * N, N)
+        return x.transpose(0, 2, 1).reshape(81, 9)
     if kind == "col":                       # axes (c, k, r)
-        return x.transpose(1, 2, 0).reshape(N * N, N)
-    if kind == "box":                       # r = br*n + i, c = bc*n + j -> axes (br, bc, k, i, j)
-        n = int(round(N ** 0.5))
-        return x.reshape(n, n, n, n, N).transpose(0, 2, 4, 1, 3).reshape(N * N, N)
+        return x.transpose(1, 2, 0).reshape(81, 9)
+    if kind == "box":                       # r = br*3 + i, c = bc*3 + j -> axes (br, bc, k, i, j)
+        return x.reshape(3, 3, 3, 3, 9).transpose(0, 2, 4, 1, 3).reshape(81, 9)
     raise ValueError(f"unknown kind {kind!r}")
 
 
-def from_groups(G: np.ndarray, kind: str, N: int) -> np.ndarray:
-    """Inverse of to_groups: (N*N, N) -> (N, N, N)."""
+def from_groups(G: np.ndarray, kind: str, N: int = 9) -> np.ndarray:
+    """Inverse of to_groups: (81, 9) -> (9, 9, 9)."""
     if kind == "cell":
-        return G.reshape(N, N, N)
+        return G.reshape(9, 9, 9)
     if kind == "row":
-        return G.reshape(N, N, N).transpose(0, 2, 1)
+        return G.reshape(9, 9, 9).transpose(0, 2, 1)
     if kind == "col":
-        return G.reshape(N, N, N).transpose(2, 0, 1)
+        return G.reshape(9, 9, 9).transpose(2, 0, 1)
     if kind == "box":
-        n = int(round(N ** 0.5))
-        return G.reshape(n, n, N, n, n).transpose(0, 3, 1, 4, 2).reshape(N, N, N)
+        return G.reshape(3, 3, 9, 3, 3).transpose(0, 3, 1, 4, 2).reshape(9, 9, 9)
     raise ValueError(f"unknown kind {kind!r}")
 
 
@@ -232,27 +228,24 @@ def project_onehot(x: np.ndarray, kind: str, puzzle: np.ndarray,
     the largest entry of every group becomes 1 (Remark 5.1 of the paper; ties are broken by
     taking the first maximum). This set is NOT convex. For kind='cell' with clamp_clues=True
     the clue cells are set to their given digit (the 4-set formulation)."""
-    N = x.shape[0]
     G = to_groups(x, kind)
     H = np.zeros_like(G)
     H[np.arange(G.shape[0]), G.argmax(axis=1)] = 1.0
-    y = from_groups(H, kind, N)
+    y = from_groups(H, kind)
     return _clamp_clues(y, puzzle) if (kind == "cell" and clamp_clues) else y
 
 
 def group_violation(x: np.ndarray) -> float:
-    """1/2 * sum of (group sum - 1)^2 over rows, columns and boxes; any N.
-    Same quantity as objective.constraint_violation for 9x9."""
+    """1/2 * sum of (group sum - 1)^2 over rows, columns and boxes.
+    Same quantity as objective.constraint_violation."""
     return 0.5 * float(sum(((to_groups(x, k).sum(axis=1) - 1) ** 2).sum()
                            for k in ("row", "col", "box")))
 
 
-def _solved_any_n(grid: np.ndarray, puzzle: np.ndarray) -> bool:
-    """Valid solution check for any N: every row, column and box holds 1..N once,
-    and the clues are kept."""
-    N = grid.shape[0]
-    onehot = np.zeros((N, N, N))
-    r, c = np.indices((N, N))
+def _is_solved_grid(grid: np.ndarray, puzzle: np.ndarray) -> bool:
+    """Valid solution check: every row, column and box holds 1..9 once, and the clues are kept."""
+    onehot = np.zeros((9, 9, 9))
+    r, c = np.indices((9, 9))
     onehot[r, c, grid - 1] = 1.0
     rules_ok = all((to_groups(onehot, k).sum(axis=1) == 1).all() for k in ("row", "col", "box"))
     clues_ok = bool(np.all(grid[puzzle > 0] == puzzle[puzzle > 0]))
@@ -282,13 +275,12 @@ def douglas_rachford(puzzle: np.ndarray, max_iter: int = 10000, seed: int = 0,
                          candidate = P_D x
     order="rules_first": z <- z + P_D(2 P_C z - z) - P_C z,  candidate = P_D(P_C z)
 
-    start="paper":   x0 = (y, ..., y) with y uniform in [0, 1]^(N x N x N), a point of D
-    start="uniform": weights 1/N plus `noise` * uniform noise, separately in every copy
+    start="paper":   x0 = (y, ..., y) with y uniform in [0, 1]^(9x9x9), a point of D
+    start="uniform": weights 1/9 plus `noise` * uniform noise, separately in every copy
 
     The candidate is rounded per cell (largest weight) and the run stops as soon as it is
     a valid solution; at a solution the paper's rounding to the nearest integer gives the
-    same grid. The paper uses at most 10,000 iterations. Works for any N = n*n."""
-    N = puzzle.shape[0]
+    same grid. The paper uses at most 10,000 iterations."""
     rng = np.random.default_rng(seed)
     if n_sets == 5:
         sets = [("row", False), ("col", False), ("box", False), ("givens", None), ("cell", False)]
@@ -304,10 +296,10 @@ def douglas_rachford(puzzle: np.ndarray, max_iter: int = 10000, seed: int = 0,
 
     m = len(sets)
     if start == "paper":
-        y = rng.random((N, N, N))
+        y = rng.random((9, 9, 9))
         x = np.stack([y] * m)
     elif start == "uniform":
-        base = _clamp_clues(np.full((N, N, N), 1.0 / N), puzzle)
+        base = _clamp_clues(np.full((9, 9, 9), 1.0 / 9), puzzle)
         x = np.stack([base + noise * rng.random(base.shape) for _ in range(m)])
     else:
         raise ValueError("start must be 'paper' or 'uniform'")
@@ -331,10 +323,10 @@ def douglas_rachford(puzzle: np.ndarray, max_iter: int = 10000, seed: int = 0,
         if callback is not None:
             callback(t, cand)
         grid = cand.argmax(axis=2) + 1
-        if _solved_any_n(grid, puzzle):
+        if _is_solved_grid(grid, puzzle):
             return Result(cand, grid, True, t, history)
     grid = cand.argmax(axis=2) + 1
-    return Result(cand, grid, _solved_any_n(grid, puzzle), max_iter, history)
+    return Result(cand, grid, _is_solved_grid(grid, puzzle), max_iter, history)
 
 
 METHODS = {

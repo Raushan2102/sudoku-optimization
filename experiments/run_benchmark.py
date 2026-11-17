@@ -3,8 +3,7 @@
     python experiments/run_benchmark.py --sample data/dev_sample.csv --methods pg fw --out results/dev_run.csv
 
 Add --history-out results/dev_hist.jsonl to also save each run's constraint violation per
-iteration (used by experiments/plots.py for convergence curves). Works for any grid size;
-the output has an N column.
+iteration (used by experiments/plots.py for convergence curves).
 
 --restarts K gives every puzzle up to K starts (seed 0, 1, ...; the gradient methods add
 random noise to the start from the second one on). Iterations and seconds are summed over
