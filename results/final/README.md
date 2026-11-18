@@ -75,7 +75,21 @@ One-off check (Nov 17, 2026): the five puzzles DR missed in E1, rerun from the s
 | 762699 | 4.8 | missed | unsolved | start 4, 327 iterations |
 
 - With the paper's budget, DR's one-start result would be 297/300 instead of 295/300; both newly solved puzzles needed only a little more than 3000 iterations.
-- The other three are stuck rather than slow: from this start DR circles without converging even at 10,000 iterations, while a fresh start solves each in 123–327 iterations. For DR on these puzzles, restarting beats waiting.
+- The other three are stuck rather than slow: from this start DR wanders without converging even at 10,000 iterations, while a fresh start solves each in 123–327 iterations. For DR on these puzzles, restarting beats waiting.
+
+Follow-up (Nov 17, 2026): 20 more random starts per puzzle, 10,000 iterations each, with a check for repeated states (all five copies equal to within 1e-9). All five puzzles have exactly one solution.
+
+| Puzzle id | Difficulty | Other starts solved (of 20) | Median iterations when solved | Closest the E1 start gets |
+| --- | --- | --- | --- | --- |
+| 2511252 | 5.1 | 20 | 409 | solves at 4912 |
+| 2203850 | 5.6 | 20 | 1158 | solves at 3825 |
+| 495520 | 3.1 | 13 | 247 | 12 cells wrong |
+| 1926592 | 4.1 | 8 | 533 | 25 cells wrong |
+| 762699 | 4.8 | 7 | 561 | 11 cells wrong |
+
+- 2511252 and 2203850 are easy for DR: every other start solves them; the E1 start was slow and hit the cap.
+- 495520, 1926592 and 762699 are hard for DR: 35–65 % of starts solve them. None of the 63 runs on them revisits a state (unlike 'Nasty', where most runs loop); failing runs keep moving and never get closer than 11–25 wrong cells.
+- What makes a puzzle hard for DR does not follow the Kaggle rating: the three DR-hard puzzles are rated 3.1–4.8, easier than the two DR finds easy (5.1 and 5.6). The data shows how DR fails on them, not which feature of the puzzles causes it.
 
 ## Why DR underperforms the paper on 'Nasty'
 
