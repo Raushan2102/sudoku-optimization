@@ -14,9 +14,9 @@ Every run uses the paper's order, start x0 = (y, ..., y) and at most 10,000 iter
             full     5 sets, clue projection resets the whole clue cell (1 for the given digit, 0 else)
             four     4 sets, clues fixed inside the cell projection
 
-With a deterministic tie rule (first, last) a run that revisits a state exactly is stopped and
-counted as a cycle: it can never solve. raw is deterministic too, but its float state drifts
-in the last bits, so exact repeats are not detected.
+For the deterministic rules (raw, first, last) the script also reports whether a run revisits an
+earlier state (all five copies equal to within 1e-9), and when. Runs are never cut short, so the
+solve counts do not depend on this check.
 """
 import argparse
 import sys
@@ -90,36 +90,38 @@ def run(seed):
     x = np.stack([y] * len(SETS))
     tie_rng = np.random.default_rng(10_000 + seed)
     stats = {"groups": 0, "tied": 0}
-    seen = {}
-    deterministic = a.tie in ("first", "last")
+    seen, repeat_at, period = {}, None, None
+    deterministic = a.tie != "random"
     for t in range(1, a.max_iter + 1):
         d = x.mean(axis=0)
         r = 2 * d[None] - x
         pc = np.stack([project(r[i], k, tie_rng, stats) for i, k in enumerate(SETS)])
         x = x + pc - d[None]
         if _is_solved_grid(x.mean(axis=0).argmax(axis=2) + 1, puzzle):
-            return "solved", t, None, stats
-        if deterministic:
-            key = np.rint(x * 5).astype(np.int32).tobytes()   # iterates are multiples of 0.2
+            return "solved", t, repeat_at, period, stats
+        if deterministic and repeat_at is None:
+            key = hash(np.round(x, 9).tobytes())
             if key in seen:
-                return "cycle", t, t - seen[key], stats
+                repeat_at, period = t, t - seen[key]
             seen[key] = t
-    return "cap", a.max_iter, None, stats
+    return "cap", a.max_iter, repeat_at, period, stats
 
 
 rows = []
 for s in range(a.seeds):
-    outcome, it, period, st = run(s)
-    rows.append({"seed": s, "outcome": outcome, "iterations": it, "period": period,
+    outcome, it, rep, period, st = run(s)
+    rows.append({"seed": s, "outcome": outcome, "iterations": it, "repeat_at": rep, "period": period,
                  "tie_share": st["tied"] / st["groups"] if st["groups"] else np.nan})
 df = pd.DataFrame(rows)
 solved = df[df.outcome == "solved"]
-cyc = df[df.outcome == "cycle"]
+rep = df[df.repeat_at.notna()]
 print(f"{a.puzzle} tie={a.tie} givens={a.givens}: solved {len(solved)}/{len(df)}  "
       f"outcomes {df.outcome.value_counts().to_dict()}")
 if len(solved):
     print(f"  median iterations when solved: {int(solved.iterations.median())}")
-if len(cyc):
-    print(f"  cycles: median start {cyc.iterations.median():.0f}, median period {cyc.period.median():.0f}")
+if a.tie != "random":
+    print(f"  runs that revisit an earlier state: {len(rep)}"
+          + (f" (median first repeat {rep.repeat_at.median():.0f}, median period {rep.period.median():.0f})"
+             if len(rep) else ""))
 if df.tie_share.notna().any():
     print(f"  share of group projections with a tie: {100 * df.tie_share.median():.2f} %")
