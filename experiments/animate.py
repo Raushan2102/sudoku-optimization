@@ -13,6 +13,7 @@ import argparse
 import sys
 from pathlib import Path
 
+import matplotlib
 import numpy as np
 import pandas as pd
 from PIL import Image, ImageDraw, ImageFont
@@ -25,16 +26,13 @@ NAMES = {"pg": "Projected gradient", "apg": "Accelerated PG", "fw": "Frank–Wol
 COLORS = {"pg": (42, 120, 214), "apg": (235, 104, 52), "fw": (27, 143, 102), "dr": (179, 122, 0)}
 BG, INK, GRID, MUTED = (255, 250, 241), (34, 34, 59), (196, 190, 176), (110, 106, 98)
 OK, BAD = (26, 140, 90), (214, 69, 65)
-FONT_DIR = "/usr/share/fonts/truetype/dejavu/"
+FONT_DIR = Path(matplotlib.get_data_path()) / "fonts" / "ttf"   # DejaVu ships with matplotlib
 
 
 def font(size, bold=False, mono=False):
     name = "DejaVuSansMono" if mono else "DejaVuSans"
     name += "-Bold.ttf" if bold else ".ttf"
-    try:
-        return ImageFont.truetype(FONT_DIR + name, size)
-    except OSError:
-        return ImageFont.load_default()
+    return ImageFont.truetype(str(FONT_DIR / name), size)
 
 
 def record(method, puzzle, keep):
