@@ -171,6 +171,18 @@ def test_gradient_methods_solve_example(method):
     assert (res.x >= -1e-12).all() and np.allclose(res.x.sum(axis=2), 1)   # stays feasible
 
 
+@pytest.mark.parametrize("method", [projected_gradient, accelerated_projected_gradient, frank_wolfe,
+                                    douglas_rachford])
+def test_trace_does_not_change_the_run(method):
+    p = parse_grid(PUZZLE)
+    calls = []
+    plain = method(p)
+    traced = method(p, trace=lambda t, info: calls.append(t))
+    assert traced.iterations == plain.iterations and (traced.grid == plain.grid).all()
+    assert np.array_equal(traced.x, plain.x)
+    assert calls == list(range(1, plain.iterations + 1))
+
+
 def test_frank_wolfe_classic_step_runs():
     res = frank_wolfe(parse_grid(PUZZLE), max_iter=50, step_rule="classic")
     assert len(res.history) == res.iterations

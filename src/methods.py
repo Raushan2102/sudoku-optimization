@@ -53,13 +53,14 @@ def _done(x: np.ndarray, puzzle: np.ndarray):
 
 def projected_gradient(puzzle: np.ndarray, max_iter: int = 1000, lam_max: float = 0.6,
                        sigma: float = 0.25, seed=None, noise: float = 0.0, callback=None,
-                       **params) -> Result:
+                       trace=None, **params) -> Result:
     """Projected gradient with Armijo backtracking along the projection arc
     (course notes ch. 6 and 10):
         x(a) = P_simplex(x - a * grad f(x)),  accept a when
         f(x(a)) <= f(x) + sigma * <grad f(x), x(a) - x>.
     The step found at one iteration is the starting guess (doubled) for the next.
-    lam grows from 0 to lam_max (lam_schedule); clue cells never move."""
+    lam grows from 0 to lam_max (lam_schedule); clue cells never move.
+    trace(t, info), if given, receives the iteration's internals (it does not change the run)."""
     from src.objective import constraint_violation, objective_and_grad, project_simplex
     x, mask, x0 = _setup(puzzle, seed, noise)
     step, history = 1.0, []
@@ -67,7 +68,7 @@ def projected_gradient(puzzle: np.ndarray, max_iter: int = 1000, lam_max: float 
         lam = lam_schedule(t, max_iter, lam_max)
         f, g = objective_and_grad(x, lam)
         g[mask] = 0.0
-        a = 2 * step
+        a, halvings = 2 * step, 0
         while True:
             xn = project_simplex(x - a * g)
             xn[mask] = x0[mask]
@@ -75,6 +76,10 @@ def projected_gradient(puzzle: np.ndarray, max_iter: int = 1000, lam_max: float 
             if fn <= f + sigma * float((g * (xn - x)).sum()) or a < 1e-10:
                 break
             a *= 0.5
+            halvings += 1
+        if trace is not None:
+            trace(t, {"lam": lam, "step": a, "halvings": halvings, "f": fn,
+                      "x_before": x.copy(), "gradient_step": x - a * g})
         step, x = a, xn
         history.append(constraint_violation(x))
         if callback is not None:
@@ -88,27 +93,31 @@ def projected_gradient(puzzle: np.ndarray, max_iter: int = 1000, lam_max: float 
 
 def accelerated_projected_gradient(puzzle: np.ndarray, max_iter: int = 1000, lam_max: float = 0.6,
                                    sigma: float = 0.25, restart: bool = True, seed=None,
-                                   noise: float = 0.0, callback=None, **params) -> Result:
+                                   noise: float = 0.0, callback=None, trace=None,
+                                   **params) -> Result:
     """Nesterov's accelerated projected gradient (course notes ch. 8), FISTA form:
         y = x_k + ((t_k - 1) / t_{k+1}) (x_k - x_{k-1}),   x_{k+1} = projected Armijo step from y.
     restart=True resets the momentum whenever f goes up (the objective is nonconvex and
     changes with lam, so plain momentum can overshoot). If the extrapolated point is worse
-    than x_k, the step is taken from x_k instead."""
+    than x_k, the step is taken from x_k instead.
+    trace(t, info), if given, receives the iteration's internals (it does not change the run)."""
     from src.objective import constraint_violation, objective_and_grad, project_simplex
     x, mask, x0 = _setup(puzzle, seed, noise)
     x_prev, tk, step, f_prev, history = x.copy(), 1.0, 1.0, np.inf, []
     for t in range(1, max_iter + 1):
         lam = lam_schedule(t, max_iter, lam_max)
         tn = (1 + np.sqrt(1 + 4 * tk * tk)) / 2
-        y = project_simplex(x + ((tk - 1) / tn) * (x - x_prev))
+        beta = (tk - 1) / tn
+        y = project_simplex(x + beta * (x - x_prev))
         y[mask] = x0[mask]
         fy, gy = objective_and_grad(y, lam)
         fx, gx = objective_and_grad(x, lam)
+        used_momentum = not fy > fx
         if fy > fx:                               # bad extrapolation: step from x instead
             y, fy, gy = x, fx, gx
         gy = gy.copy()
         gy[mask] = 0.0
-        a = 2 * step
+        a, halvings = 2 * step, 0
         while True:
             xn = project_simplex(y - a * gy)
             xn[mask] = x0[mask]
@@ -116,9 +125,15 @@ def accelerated_projected_gradient(puzzle: np.ndarray, max_iter: int = 1000, lam
             if fn <= fy + sigma * float((gy * (xn - y)).sum()) or a < 1e-10:
                 break
             a *= 0.5
+            halvings += 1
         step = a
-        if restart and fn > f_prev:
+        restarted = bool(restart and fn > f_prev)
+        if restarted:
             tn = 1.0                              # momentum reset
+        if trace is not None:
+            trace(t, {"lam": lam, "beta": beta, "used_momentum": used_momentum, "restart": restarted,
+                      "step": a, "halvings": halvings, "f": fn, "x_before": x.copy(),
+                      "y": y.copy(), "gradient_step": y - a * gy})
         x_prev, x, tk, f_prev = x, xn, tn, fn
         history.append(constraint_violation(x))
         if callback is not None:
@@ -132,13 +147,14 @@ def accelerated_projected_gradient(puzzle: np.ndarray, max_iter: int = 1000, lam
 
 def frank_wolfe(puzzle: np.ndarray, max_iter: int = 1000, lam_max: float = 0.6,
                 step_rule: str = "armijo", sigma: float = 0.25, seed=None,
-                noise: float = 0.0, callback=None, **params) -> Result:
+                noise: float = 0.0, callback=None, trace=None, **params) -> Result:
     """Frank-Wolfe / conditional gradient (course notes ch. 10). The linear subproblem
     min_s <grad f(x), s> over a product of simplices has a closed form: in every cell, all
     weight on the digit with the smallest partial derivative. Then x <- x + gamma (s - x),
         step_rule="armijo":  gamma by backtracking from 1 on f(x + gamma d) <= f + sigma gamma <g, d>
         step_rule="classic": gamma = 2 / (t + 2).
-    No projection is needed: every iterate is a convex combination of feasible points."""
+    No projection is needed: every iterate is a convex combination of feasible points.
+    trace(t, info), if given, receives the iteration's internals (it does not change the run)."""
     from src.objective import constraint_violation, objective_and_grad
     x, mask, x0 = _setup(puzzle, seed, noise)
     r, c = np.indices((9, 9))
@@ -150,6 +166,7 @@ def frank_wolfe(puzzle: np.ndarray, max_iter: int = 1000, lam_max: float = 0.6,
         s_[r, c, g.argmin(axis=2)] = 1.0
         s_[mask] = x0[mask]
         d = s_ - x
+        halvings = 0
         if step_rule == "classic":
             gamma = 2.0 / (t + 2)
         elif step_rule == "armijo":
@@ -160,8 +177,12 @@ def frank_wolfe(puzzle: np.ndarray, max_iter: int = 1000, lam_max: float = 0.6,
                 if fn <= f + sigma * gamma * slope:
                     break
                 gamma *= 0.5
+                halvings += 1
         else:
             raise ValueError("step_rule must be 'armijo' or 'classic'")
+        if trace is not None:
+            trace(t, {"lam": lam, "gamma": gamma, "halvings": halvings, "f": f,
+                      "x_before": x.copy(), "target": s_.copy()})
         x = x + gamma * d
         history.append(constraint_violation(x))
         if callback is not None:
@@ -263,7 +284,7 @@ def project_givens(x: np.ndarray, puzzle: np.ndarray) -> np.ndarray:
 
 def douglas_rachford(puzzle: np.ndarray, max_iter: int = 10000, seed: int = 0,
                      n_sets: int = 5, order: str = "paper", start: str = "paper",
-                     noise: float = 0.1, callback=None, **params) -> Result:
+                     noise: float = 0.1, callback=None, trace=None, **params) -> Result:
     """Douglas-Rachford in the product space (Aragón Artacho, Borwein & Tam 2014, Sec. 6.2).
 
     One copy of the grid per constraint set. With n_sets=5 (as in the paper) the sets are
@@ -280,7 +301,9 @@ def douglas_rachford(puzzle: np.ndarray, max_iter: int = 10000, seed: int = 0,
 
     The candidate is rounded per cell (largest weight) and the run stops as soon as it is
     a valid solution; at a solution the paper's rounding to the nearest integer gives the
-    same grid. The paper uses at most 10,000 iterations."""
+    same grid. The paper uses at most 10,000 iterations.
+    trace(t, info), if given (order="paper" only), receives the five projections and the
+    average before the step; it does not change the run."""
     rng = np.random.default_rng(seed)
     if n_sets == 5:
         sets = [("row", False), ("col", False), ("box", False), ("givens", None), ("cell", False)]
@@ -311,6 +334,9 @@ def douglas_rachford(puzzle: np.ndarray, max_iter: int = 10000, seed: int = 0,
             d = x.mean(axis=0)                                      # P_D x
             r = 2 * d[None] - x                                     # R_D x
             pc = np.stack([proj(r[i], k, c) for i, (k, c) in enumerate(sets)])
+            if trace is not None:
+                trace(t, {"sets": [k for k, _ in sets], "average_before": d.copy(),
+                          "projections": pc.copy()})
             x = x + pc - d[None]
             cand = x.mean(axis=0)                                   # P_D of the new iterate
         elif order == "rules_first":
