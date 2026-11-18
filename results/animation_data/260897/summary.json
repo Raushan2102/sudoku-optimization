@@ -1,0 +1,46 @@
+{
+ "id": "260897",
+ "difficulty": 5.3,
+ "band": "5-8.5",
+ "puzzle": ".........3...52.9.65....3....4.8...2....3..41...7...8.2.18.6...7...1.6...........",
+ "solution": "918347256347652198652198374534981762876235941129764583291876435785413629463529817",
+ "focus_cell": [
+  8,
+  5
+ ],
+ "place_threshold": 0.85,
+ "methods": {
+  "pg": {
+   "solved": true,
+   "iterations": 287,
+   "placements": 50,
+   "revisions": 0,
+   "retractions": 0,
+   "wrong_placements": 0
+  },
+  "apg": {
+   "solved": true,
+   "iterations": 261,
+   "placements": 52,
+   "revisions": 0,
+   "retractions": 0,
+   "wrong_placements": 0
+  },
+  "fw": {
+   "solved": true,
+   "iterations": 406,
+   "placements": 60,
+   "revisions": 0,
+   "retractions": 8,
+   "wrong_placements": 5
+  },
+  "dr": {
+   "solved": true,
+   "iterations": 411,
+   "placements": 1332,
+   "revisions": 10,
+   "retractions": 1340,
+   "wrong_placements": 732
+  }
+ }
+}
