@@ -200,8 +200,8 @@ def main():
     viol = D["row_v"].sum(axis=1) + D["col_v"].sum(axis=1) + D["box_v"].sum(axis=1)
     ts_all = np.arange(T + 1)
     if m == "dr":
-        P = np.unpackbits(D["projections"], axis=-1, count=9).astype(bool)   # (T, 5, 9, 9, 9)
-        set_names = ["rows", "columns", "boxes", "clues", "cells"]
+        set_names = ["rows", "columns", "boxes", "clues", "cells"]        # order of focus_projections
+        focus_is_clue = bool(puzzle[fr, fc])
 
     frame_ts = sorted(set(range(1, min(T, 30) + 1)) |
                       set(np.unique(np.geomspace(1, T, a.frames).astype(int)).tolist()) | {T})
@@ -283,23 +283,26 @@ def main():
                 d.line([(tx + k * tc, ty + 22), (tx + k * tc, ty + 22 + ts_)], fill=GRID)
         else:
             bars(d, px, by, 120, bh, D["focus_average_before"][i], "1. average before", accent, sol_digit)
-            vx, vy, cw = px + 160, by, 22                    # vote table: one row per copy
+            vx, vy, cw = px + 160, by, 22                    # one row per copy
             d.text((vx, vy), "2. each copy projected onto its rule", font=F["small"], fill=INK)
-            votes = P[i][:, fr, fc, :]
+            votes = D["focus_projections"][i]                # (5, 9)
             for s in range(5):
                 yy = vy + 22 + s * 19
                 d.text((vx + 62, yy + 8), set_names[s], font=F["tiny"], fill=MUTED, anchor="rm")
                 for k in range(9):
+                    v = float(votes[s, k])
                     box = [vx + 70 + k * cw, yy, vx + 70 + (k + 1) * cw - 3, yy + 16]
-                    d.rectangle(box, fill=accent if votes[s, k] else BG, outline=GRID)
+                    d.rectangle(box, fill=mix(accent, float(np.clip(v, 0, 1))), outline=GRID)
             for k in range(9):
                 d.text((vx + 70 + (k + 0.5) * cw - 1, vy + 22 + 5 * 19 + 6), str(k + 1), font=F["tiny"],
                        fill=OK if k + 1 == sol_digit else MUTED, anchor="mm")
-            bars(d, px + 440, by, 120, bh, after, "3. new average", accent, sol_digit,
-                 note="moves in steps of 0.2")
-            agree = int(votes[:, int(after.argmax())].sum())
-            info = (f"copies voting for the leading digit {int(after.argmax()) + 1}: {agree} of 5    "
-                    "(placed only when all five agree)")
+            if not focus_is_clue:
+                d.text((vx, vy + 22 + 5 * 19 + 18), "clues: no clue here, values pass through unchanged",
+                       font=F["tiny"], fill=MUTED)
+            bars(d, px + 440, by, 120, bh, after, "3. average of the five", accent, sol_digit)
+            lead = int(after.argmax())
+            agree = int(sum(votes[s, lead] > 0.5 for s in (0, 1, 2, 4)))
+            info = f"copies of rows, columns, boxes and cells choosing digit {lead + 1}: {agree} of 4"
         d.text((px, 290), info, font=F["txt"], fill=INK)
 
         tl = ts_all[1:]

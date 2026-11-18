@@ -16,12 +16,12 @@ results/animation_data/<id>/:
                    pg   lam, step, halvings
                    apg  lam, beta, used_momentum, restart, step, halvings
                    fw   lam, gamma, halvings, target (digit chosen in every cell, 1..9)
-                   dr   projections (five projected copies, bit-packed: rows, cols, boxes,
-                        givens, cells)
+                   dr   projections (the 0/1 copies for rows, columns, boxes and cells,
+                        bit-packed), clue_copy (the clue copy, which sets each clue's digit to
+                        1 and passes every other value through unchanged, so it is not 0/1)
   events.json    for each method, every placement / revision / retraction of a digit. A cell
                  counts as placed when one digit holds more than 85 % of its weight (for DR:
-                 when the five constraint copies agree on it, since their average moves in
-                 steps of 0.2).
+                 of the average of the five copies).
   summary.json   puzzle, solution, focus cell and per-method totals.
 
 None of the methods selects cells, places digits one at a time or backtracks: each iteration
@@ -139,9 +139,14 @@ def main():
             if m == "apg":
                 data["focus_y"] = np.stack([i["y"][fr, fc] for i in info]).astype(np.float32)
         else:
-            P = np.stack([i["projections"] for i in info]).astype(bool)   # (T, 5, 9, 9, 9)
-            data["projections"] = np.packbits(P, axis=-1)
-            data["sets"] = np.array(info[0]["sets"])
+            P = np.stack([i["projections"] for i in info])               # (T, 5, 9, 9, 9)
+            sets = list(info[0]["sets"])
+            binary = [k for k in range(len(sets)) if sets[k] != "givens"]
+            g = sets.index("givens")
+            data["projections"] = np.packbits(P[:, binary] > 0.5, axis=-1)
+            data["sets"] = np.array([sets[k] for k in binary])
+            data["clue_copy"] = P[:, g].astype(np.float16)
+            data["focus_projections"] = P[:, :, fr, fc].astype(np.float32)
             data["focus_average_before"] = np.stack([i["average_before"][fr, fc]
                                                      for i in info]).astype(np.float32)
         np.savez_compressed(out / f"{m}.npz", **data)
